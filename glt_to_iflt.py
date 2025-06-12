@@ -48,6 +48,7 @@ def process_mei_file(input_file, output_dir):
                 if len(child) >= 1:
                     iterator(child)
                 if child.tag == "{http://www.music-encoding.org/ns/mei}rest":
+                    # TODO: add <tabDurSym> instead of <rest> if not already present
                     parents.remove(child)
 
         iterator(tree_root)
