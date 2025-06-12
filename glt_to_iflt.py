@@ -49,6 +49,21 @@ def process_mei_file(input_file, output_dir):
                     iterator(child)
                 if child.tag == "{http://www.music-encoding.org/ns/mei}rest":
                     # TODO: add <tabDurSym> instead of <rest> if not already present
+                    if (
+                        parents.tag
+                        == "{http://www.music-encoding.org/ns/mei}tabGrp"
+                    ):
+                        has_tabDurSym = any(
+                            c.tag
+                            == "{http://www.music-encoding.org/ns/mei}tabDurSym"
+                            for c in parents
+                        )
+                        if not has_tabDurSym:
+                            parents.append(
+                                ET.Element(
+                                    "{http://www.music-encoding.org/ns/mei}tabDurSym",
+                                )
+                            )
                     parents.remove(child)
 
         iterator(tree_root)
