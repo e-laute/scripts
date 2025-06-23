@@ -122,9 +122,9 @@ def process_mei_file(input_file, output_dir):
 
 def main():
     input_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "Judenkuenig"
+        os.path.dirname(os.path.abspath(__file__)), "files"
     )
-    output_dir = input_dir + "_converted"
+    output_dir = "converted"
 
     german_dir = os.path.join(output_dir, "GLT")
     os.makedirs(german_dir, exist_ok=True)
@@ -135,7 +135,8 @@ def main():
             if process_mei_file(input_file, output_dir):
                 shutil.copy(input_file, os.path.join(german_dir, file))
             else:
-                print(f"Failed to process {file}")
+                if input_file.endswith("GLT.mei"):
+                    print(f"Failed to process {file}")
 
 
 if __name__ == "__main__":
