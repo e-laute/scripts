@@ -1,0 +1,19 @@
+name: Test Action
+
+
+on: 
+  release:
+    types: [created] # on creation of release, stop release process if an error occurs
+
+jobs:
+  build: 
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Say Hello
+        run: python .github/workflows/hello_world.py
+      
+
+
+
+
