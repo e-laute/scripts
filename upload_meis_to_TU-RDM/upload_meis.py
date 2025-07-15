@@ -58,6 +58,7 @@ def look_up_source_links(source_id):
 
 
 def get_metadata(mei_file):
+    # TODO: extract metadata from MEI file
     return None
 
 
