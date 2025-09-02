@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
+# Usage:
+#   sh update_repo_secrets.sh --from-file ./secrets.env
+#   sh update_repo_secrets.sh NAME1=VALUE1 NAME2=VALUE2 NAME3=VALUE3 NAME4=VALUE4 NAME5=VALUE5
+#
+# Install gh: brew install gh
+# First time auth: gh auth login
 set -euo pipefail
 
 ORG="${ORG:-e-laute}"
-REPO="$ORG/GA-test"
 
 declare -A SECRETS
 SECRET_FILE=""
@@ -11,6 +16,9 @@ usage() {
   echo "Usage:"
   echo "  $0 --from-file ./secrets.env"
   echo "  $0 NAME1=VALUE1 NAME2=VALUE2 ..."
+  echo
+  echo "Env:"
+  echo "  ORG=<github-org>   (default: e-laute)"
 }
 
 abort() { echo "Error: $*" >&2; exit 1; }
@@ -25,6 +33,7 @@ parse_kv() {
   [[ "$kv" == *"="* ]] || abort "Invalid secret spec '$kv' (expected NAME=VALUE)"
   local name="${kv%%=*}"
   local value="${kv#*=}"
+  [[ -n "$name" && -n "$value" ]] || abort "Empty name or value in '$kv'"
   SECRETS["$name"]="$value"
 }
 
@@ -51,21 +60,44 @@ done
 
 require_gh
 
-echo "Testing with repository: $REPO"
-
-existing=$(gh secret list -R "$REPO" --json name -q '.[].name')
-
-for name in "${!SECRETS[@]}"; do
-  if echo "$existing" | grep -q "^$name$"; then
-    read -p "Secret '$name' already exists in $REPO. Overwrite? (y/N) " ans
-    case "$ans" in
-      [yY]*) ;;
-      *) echo "  Skipping $name"; continue ;;
-    esac
+# Repo loop
+gh repo list "$ORG" --limit 1000 --no-archived --source | while read -r repo _; do
+  # Skip if repo matches exclusions
+  if [[ "$repo" == "$ORG/ARCHIVED"* ]] || \
+     [[ "$repo" == "$ORG/$ORG.github.io" ]] || \
+     [[ "$repo" == "$ORG/SPARQL" ]] || \
+     [[ "$repo" == "$ORG/extra" ]] || \
+     [[ "$repo" == "$ORG/Database-" ]] || \
+     [[ "$repo" == "$ORG/DATABASE_TabHum" ]] || \
+     [[ "$repo" == "$ORG/DATABASE-README" ]] || \
+     [[ "$repo" == "$ORG/GH_Actions" ]] || \
+     [[ "$repo" == "$ORG/.github-private" ]] || \
+     [[ "$repo" == "$ORG/scripts" ]] || \
+     [[ "$repo" == "$ORG/audio" ]] || \
+     [[ "$repo" == "$ORG/validate_encodings" ]] || \
+     [[ "$repo" == "$ORG/upload_mei_to_TU-RDM" ]] || \
+     [[ "$repo" == "$ORG/.github" ]]; then
+    echo "Skipping repository: $repo"
+    continue
   fi
-  if gh secret set "$name" -R "$REPO" --body "${SECRETS[$name]}" >/dev/null; then
-    echo "  ✓ $name"
-  else
-    echo "  ✗ $name (failed)" >&2
-  fi
+
+  echo "Updating secrets in: $repo"
+
+  # Get currently set secrets
+  existing=$(gh secret list -R "$repo" -L 1000 | awk '{print $1}')
+
+  for name in "${!SECRETS[@]}"; do
+    if echo "$existing" | grep -q "^$name$"; then
+      read -p "Secret '$name' already exists in $repo. Overwrite? (y/N) " ans
+      case "$ans" in
+        [yY]*) ;;
+        *) echo "  Skipping $name"; continue ;;
+      esac
+    fi
+    if gh secret set "$name" -R "$repo" --body "${SECRETS[$name]}" >/dev/null; then
+      echo "  ✓ $name"
+    else
+      echo "  ✗ $name (failed)" >&2
+    fi
+  done
 done
