@@ -4,6 +4,7 @@
 get_files.py
 sources_table.xlsx
 
+*.env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
