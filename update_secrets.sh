@@ -10,6 +10,7 @@ set -euo pipefail
 ORG="${ORG:-e-laute}"
 
 declare -A SECRETS
+declare -A overwrite_decisions
 SECRET_FILE=""
 
 usage() {
@@ -60,8 +61,13 @@ done
 
 require_gh
 
-# Repo loop
-gh repo list "$ORG" --limit 1000 --no-archived --source | while read -r repo _; do
+# Repo loop - store repos in array to avoid pipe subshell issue
+repos=()
+while IFS=$'\t' read -r repo rest; do
+  repos+=("$repo")
+done < <(gh repo list "$ORG" --limit 1000 --no-archived --source)
+
+for repo in "${repos[@]}"; do
   # Skip if repo matches exclusions
   if [[ "$repo" == "$ORG/ARCHIVED"* ]] || \
      [[ "$repo" == "$ORG/$ORG.github.io" ]] || \
@@ -88,11 +94,19 @@ gh repo list "$ORG" --limit 1000 --no-archived --source | while read -r repo _; 
 
   for name in "${!SECRETS[@]}"; do
     if echo "$existing" | grep -q "^$name$"; then
-      read -p "Secret '$name' already exists in $repo. Overwrite? (y/N) " ans
-      case "$ans" in
-        [yY]*) ;;
-        *) echo "  Skipping $name"; continue ;;
-      esac
+      # Check if we already asked about this secret
+      if [[ -z "${overwrite_decisions[$name]:-}" ]]; then
+        read -p "Secret '$name' already exists in some repositories. Overwrite in all repos? (y/N) " ans
+        case "$ans" in
+          [yY]*) overwrite_decisions["$name"]="yes" ;;
+          *) overwrite_decisions["$name"]="no" ;;
+        esac
+      fi
+      
+      if [[ "${overwrite_decisions[$name]}" != "yes" ]]; then
+        echo "  Skipping $name"
+        continue
+      fi
     fi
     if gh secret set "$name" -R "$repo" --body "${SECRETS[$name]}" >/dev/null; then
       echo "  ✓ $name"
