@@ -84,7 +84,7 @@ gh repo list "$ORG" --limit 1000 --no-archived --source | while read -r repo _; 
   echo "Updating secrets in: $repo"
 
   # Get currently set secrets
-  existing=$(gh secret list -R "$repo" -L 1000 | awk '{print $1}')
+  existing=$(gh secret list -R "$repo" | awk '{print $1}')
 
   for name in "${!SECRETS[@]}"; do
     if echo "$existing" | grep -q "^$name$"; then
