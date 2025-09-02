@@ -53,7 +53,7 @@ require_gh
 
 echo "Testing with repository: $REPO"
 
-existing=$(gh secret list -R "$REPO" -L 1000 | awk '{print $1}')
+existing=$(gh secret list -R "$REPO" --json name -q '.[].name')
 
 for name in "${!SECRETS[@]}"; do
   if echo "$existing" | grep -q "^$name$"; then
