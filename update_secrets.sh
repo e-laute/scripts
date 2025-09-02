@@ -1,40 +1,71 @@
-# Usage: sh clone_and_update_repos.sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Install gh: brew install gh
-# first time: gh auth login (either with token or with github credentials)
+ORG="${ORG:-e-laute}"
+REPO="$ORG/GA-test"
 
-# https://stackoverflow.com/a/68770988
-# https://cli.github.com/manual/
+declare -A SECRETS
+SECRET_FILE=""
 
+usage() {
+  echo "Usage:"
+  echo "  $0 --from-file ./secrets.env"
+  echo "  $0 NAME1=VALUE1 NAME2=VALUE2 ..."
+}
 
-gh repo list e-laute --limit 1000 --no-archived --source | while read -r repo _; do
-  # Skip if repo name starts with ARCHIVED or matches specific repos
-  if [[ "$repo" == e-laute/ARCHIVED* ]] || \
-     [[ "$repo" == "e-laute/e-laute.github.io" ]] || \
-     [[ "$repo" == "e-laute/SPARQL" ]] || \
-     [[ "$repo" == "e-laute/extra" ]] || \
-     [[ "$repo" == "e-laute/Database-" ]] || \
-     [[ "$repo" == "e-laute/DATABASE_TabHum" ]] || \
-     [[ "$repo" == "e-laute/DATABASE-README" ]] || \
-     [[ "$repo" == "e-laute/GH_Actions" ]] || \
-     [[ "$repo" == "e-laute/.github-private" ]] || \
-     [[ "$repo" == "e-laute/scripts" ]] || \
-     [[ "$repo" == "e-laute/audio" ]] || \
-     [[ "$repo" == "e-laute/validate_encodings" ]] || \
-     [[ "$repo" == "e-laute/upload_mei_to_TU-RDM" ]] || \
-     [[ "$repo" == "e-laute/.github" ]]; then
-    echo "Skipping repository: $repo"
-    continue
+abort() { echo "Error: $*" >&2; exit 1; }
+
+require_gh() {
+  command -v gh >/dev/null 2>&1 || abort "gh CLI is not installed."
+  gh auth status >/dev/null 2>&1 || abort "gh CLI not authenticated. Run: gh auth login"
+}
+
+parse_kv() {
+  local kv="$1"
+  [[ "$kv" == *"="* ]] || abort "Invalid secret spec '$kv' (expected NAME=VALUE)"
+  local name="${kv%%=*}"
+  local value="${kv#*=}"
+  SECRETS["$name"]="$value"
+}
+
+load_env_file() {
+  local file="$1"
+  [[ -f "$file" ]] || abort "Secret file not found: $file"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
+    parse_kv "$line"
+  done < "$file"
+}
+
+if [[ $# -eq 0 ]]; then usage; exit 1; fi
+while (( "$#" )); do
+  case "$1" in
+    --from-file) shift; SECRET_FILE="$1"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) parse_kv "$1"; shift ;;
+  esac
+done
+[[ -n "$SECRET_FILE" ]] && load_env_file "$SECRET_FILE"
+
+require_gh
+
+echo "Testing with repository: $REPO"
+
+existing=$(gh secret list -R "$REPO" -L 1000 | awk '{print $1}')
+
+for name in "${!SECRETS[@]}"; do
+  if echo "$existing" | grep -q "^$name$"; then
+    read -p "Secret '$name' already exists in $REPO. Overwrite? (y/N) " ans
+    case "$ans" in
+      [yY]*) ;;
+      *) echo "  Skipping $name"; continue ;;
+    esac
   fi
-
-  echo "Processing repository: $repo"
-  gh repo clone "$repo" /Users/jaklin/Desktop/E-LAUTE/"$repo" -- -q 2>/dev/null || (
-    cd /Users/jaklin/Desktop/E-LAUTE/"$repo"
-    # Handle case where local checkout is on a non-main/master branch
-    # - ignore checkout errors because some repos may have zero commits,
-    # so no main or master
-    git checkout -q main 2>/dev/null || true
-    git checkout -q master 2>/dev/null || true
-    git pull -q
-  )
+  if gh secret set "$name" -R "$REPO" --body "${SECRETS[$name]}" >/dev/null; then
+    echo "  ✓ $name"
+  else
+    echo "  ✗ $name (failed)" >&2
+  fi
 done
